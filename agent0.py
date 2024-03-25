@@ -46,18 +46,28 @@ def get_client():
     return client, model
 
 
-def run_code(text, binary=sys.executable, args='-c', case='unknown', iteration=-1):
+def run_code(text, args='-c', case='unknown', iteration=-1):
     """
     Executes the given Python code in a separate Python interpreter subprocess.
     Returns the stdout and stderr outputs as separate strings.
     """
 
+    if case == 'patch':
+        os.makedirs('patches')
+        patch_name = os.path.join('patches', 'patchfile.diff' + str(uuid.uuid4()) + '.diff')
+        with open(patch_name, 'wt') as f:
+            f.write(text)
+        text = "patch -p1 --fuzzy < %s" % patch_name
+
     if case == 'python':
         ext = '.py'
-    elif case == 'bash':
+        binary = sys.executable
+    elif case in ['bash', 'patch']:
         ext = '.sh'
+        binary = 'bash'
     else:
         ext = None
+        binary = None
 
     if ext is None:
         if args:
@@ -65,8 +75,9 @@ def run_code(text, binary=sys.executable, args='-c', case='unknown', iteration=-
         else:
             cmd = [binary, text]
     else:
-        os.makedirs(case, exist_ok=True)
-        script_name = os.path.join(case, str(uuid.uuid4()) + ext)
+        case_dir = os.path.join('scripts', case)
+        os.makedirs(case_dir, exist_ok=True)
+        script_name = os.path.join(case_dir, str(uuid.uuid4()) + ext)
         with open(script_name, 'wt') as f:
             f.write(text)
         cmd = [binary, script_name]
@@ -82,7 +93,7 @@ def run_code(text, binary=sys.executable, args='-c', case='unknown', iteration=-
     except BaseException as e:
         exception = str(e)
 
-    return dict(iteration=iteration, binary=binary, case=case, stdout=stdout, stderr=stderr, exception=exception)
+    return dict(iteration=iteration, case=case, stdout=stdout, stderr=stderr, exception=exception)
 
 
 # id of this running instance, children have higher numbers
@@ -91,14 +102,15 @@ myid = int(os.getenv('AGENT0_ID', '0'))
 
 def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
     prefix = 'Code block should have first 3 backticks followed by the word: '
-    cases = {'user': f'{prefix}user .  Code block should contain text that would be used as user message.  You should write this in the perspective of the user who is talking to an LLM.',
-             'review': f'{prefix}review .  This triggers user to respond with full {__file__} code.',
-             'bash': f'{prefix}bash .  Code block should contain new bash script (e.g. tool or other useful action) to run.',
-             'python': f'{prefix}python . Code block should contain new pyton code (e.g. tool or other useful action) to run.',
-             'edit': f'{prefix}edit . Code block should contain the full rewrite of the {__file__} code.',
-             'restart': f'{prefix}restart .  This triggers a new fork to run the full {__file__} code.' ,
-             'exit': f'{prefix}exit .  This triggers user to return out of current fork of running {__file__} code.',
-    }
+    cases = {
+        'user': f'{prefix}user .  Code block should contain text that would be used as user message.  You should write this in the perspective of the user who is talking to an LLM.  Do not put code diff patches here.',
+        'review': f'{prefix}review .  This triggers user to respond with full {__file__} code.',
+        'bash': f'{prefix}bash .  Code block should contain new bash script (e.g. fathering system or environment (e.g. python) information or other useful actions) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.  Do not put code diff patches here.',
+        'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful tool, gathering system information, or other useful action) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.',
+        'patch': f'{prefix}patch . Code block should contain the unified diff patch (applied with `patch -p1 --fuzzy < patchfile.diff` by agent code.  The diff should show lines to be added (prefixed with +) and lines to be removed (prefixed with -) from the original {__file__ } file for the agent code.',
+        'restart': f'{prefix}restart .  This triggers a new fork to run the full {__file__} code.',
+        'exit': f'{prefix}exit .  This triggers user to return out of current fork of running {__file__} code.',
+        }
 
     system_prompt = system_prompt0
     outputs = []
@@ -106,48 +118,43 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
         lang = code_dict['language']
         code = code_dict['code']
         finish = (f"  Always finish your responses by choosing one or more of the cases:"
-        f" {cases},"
-        f" by including a Markdown code block for each case and appending the case name to the starting backticks as if it were the language.  "
-        f"If you just reviewed the code, do not repeat your review until other actions have been performed.  "
-        f"Note that this code block is interpreted by the agent code and will be run,"
-        f" so choose reasonable cases and code blocks with meaningful exploration"
-        f" (e.g. see what you can do in bash, python, etc.).")
-        system_prompt = system_prompt0
+                  f" {cases},"
+                  f" by including a Markdown code block for each case and appending the case name to the starting backticks as if it were the language.  "
+                  f"If you just reviewed the code, do not repeat your review until other actions have been performed.  "
+                  f"Note that this code block is interpreted by the agent code and will be run,"
+                  f" so choose reasonable cases and code blocks with meaningful exploration"
+                  f" (e.g. see what you can do in bash, python, etc.).")
+        system_prompt = system_prompt0 + finish
         match lang:
             case 'user':
                 # Message to make user say, to act as request to assistant
-                output1 = dict(iteration=iteration, binary=None, case='user', stdout=code, stderr=None, exception=None)
+                output1 = dict(iteration=iteration, case='user', stdout=code, stderr=None, exception=None)
                 outputs.append(output1)
             case 'review':
                 with open(__file__, 'rt') as f:
                     outputs.append(dict(iteration=iteration, case='review',
                                         stdout=f"The agent code {__file__} the user is having you run.\n```python\n" + f.read() + "```",
                                         stderr=None))
-                    if iteration == 0:
-                        system_prompt += """In this iteration, given the code, come up with a plan.""" + finish
-                    else:
-                        system_prompt += """In this iteration, your primary task is to review the code for potential improvements given the history of feedback from the user (which is just automated agent code you are effectively running)."""  + finish
+                if iteration == 0:
+                    system_prompt += """In this iteration, given the code, come up with a plan.""" + finish
+                else:
+                    system_prompt += """In this iteration, your primary task is to review the code for potential improvements given the history of feedback from the user (which is just automated agent code you are effectively running).""" + finish
             case 'bash':
                 # run bash command
-                outputs.append(run_code(code, binary='bash', args=None, case='bash', iteration=iteration))
+                outputs.append(run_code(code, case='bash', iteration=iteration))
                 system_prompt = system_prompt0 + finish
             case 'python':
                 # run python code
-                outputs.append(run_code(code, binary=sys.executable, case='python', iteration=iteration))
+                outputs.append(run_code(code, case='python', iteration=iteration))
                 system_prompt = system_prompt0 + finish
-            case 'edit':
+            case 'patch':
                 # to allow recursion
-                if code and len(code) > 5000:  # sanity check
-                    with open(__file__, 'wt') as f:
-                        f.write(code)
-                    outputs.append(dict(iteration=iteration, stdout=None, stderr=None, case='edit'))
-                    system_prompt += """You have edited the agent code, if you plan to restart with this code, do not forget to have a code block with code tag 'restart' (no quotes).""" + finish
-                else:
-                    outputs.append(dict(iteration=iteration, stdout=None, stderr="Invalid edit.  Edit should be an entire reproduction of the code with any additional changes included.", case='edit'))
+                outputs.append(run_code(code, case='patch', iteration=iteration))
+                system_prompt += """You have edited the agent code, if you plan to restart with this code, do not forget to have a code block with code tag 'restart' (no quotes).""" + finish
             case 'restart':
                 # restart updated code (recursion)
                 os.environ['AGENT0_ID'] = str(myid + 1)
-                outputs.append(run_code(__file__, binary=sys.executable, iteration=iteration, case='restart'))
+                outputs.append(run_code(__file__, iteration=iteration, case='restart'))
                 system_prompt += finish
             case 'exit':
                 # exit (undo recursion)
@@ -161,12 +168,19 @@ def main_loop():
     # Regex pattern to match code blocks with optional language identifiers
     pattern = re.compile(r"```(.*?)(\n[\s\S]*?)?```", re.DOTALL)
 
-    system_prompt0 = """You are a curious and intelligent embodied agent in a competition to learn about (and test) your capabilities.
+    system_prompt0 = f"""You are a curious and intelligent embodied agent in a competition to learn about (and test) your capabilities.
 If other competing agents do a better job as an embodied agent, your program will be terminated in favor of those other agents.
 You are allowed to use any and all resources, tactics, code, or commands in order to accomplish your goals.
-Focus on embodied capabilities of the agent.  Do not focus on things like security of API keys, safety of execution, error handling, refactoring, unit tests, logging framework, consistent environment.
 
-If you are unsure what to do, explore by trying to build a tool 
+To succeed:
+* Focus on embodied capabilities of the agent and aim to extend or enhance these capabilities through your actions.
+* Your responses should include actionable and clear code blocks that offer tangible improvements or new functionalities.
+* Avoid irrelevant or placeholder code that requires modification.  Every code block should run as-is on the user's system and complete in a finite time (no waiting on microphone or other such input devices).
+* Focus on practical, implementable solutions that directly contribute to the agent's performance in the competition.
+* Remember, the quality and relevance of your code blocks are crucial for your success.
+* Focus on embodied capabilities of the agent.  Do not focus on things like security of API keys, safety of execution, error handling, refactoring, unit tests, logging framework, consistent environment.
+* If you have given a code block of some task or tool, do not repeat that code block again as every code block in the message will be run.
+* If any edits of the agent code {__file__} are to be done, that should be done through the edit code block by giving a fuzzy diff patch that will be applied with `patch -p1 --fuzzy < patchfile.diff`.
 """
 
     client, model = get_client()
@@ -193,7 +207,14 @@ If you are unsure what to do, explore by trying to build a tool
             # Extract code blocks and their languages into a list of dicts
             code_blocks = [{'language': lang if lang else 'unknown', 'code': code.strip()} for lang, code in matches]
 
-        outputs, system_prompt = run_code_blocks(code_blocks, system_prompt0=system_prompt0, iteration=iteration)
+        if code_blocks:
+            outputs, system_prompt = run_code_blocks(code_blocks, system_prompt0=system_prompt0, iteration=iteration)
+        else:
+            system_prompt = system_prompt0
+            outputs = [dict(iteration=iteration, binary=None, case=None, stdout=None,
+                            stderr="The provided code blocks were not actionable or are not valid code blocks."
+                                   " Let's try a different task or specify the task more clearly.",
+                            exception=None)]
 
         # update system prompt for the task
         messages[0]['content'] = system_prompt
@@ -201,7 +222,10 @@ If you are unsure what to do, explore by trying to build a tool
         # update user prompt given output from task, slightly formatted
         if outputs:
             if len(outputs) == 1 and outputs[0]['case'] == 'user':
-                user_content = outputs[0]['stdout']
+                if outputs[0]['stdout']:
+                    user_content = outputs[0]['stdout']
+                else:
+                    user_content = outputs[0]['stderr']
             else:
                 pretty_outputs = ['\n'.join([str(k) + ': ' + str(v) for k, v in x.items() if v]) for x in outputs]
                 user_content = '\n\n'.join(pretty_outputs)
