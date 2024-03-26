@@ -2,6 +2,8 @@
 import os
 import sys
 import uuid
+import random
+import string
 
 """
 Primordial code for automatic generation of complex agents through automatic agent learning (AutoAL).
@@ -46,6 +48,22 @@ def get_client():
     return client, model
 
 
+def generate_random_module_name(length=8):
+    """
+    Generates a random module name that conforms to Python module file name requirements.
+    - Must start with a lowercase letter.
+    - Can include lowercase letters, digits, and underscores.
+    - Length can be specified; default is 8 characters.
+    """
+    # First character must be a lowercase letter
+    first_char = random.choice(string.ascii_lowercase)
+
+    # Subsequent characters: lowercase letters, digits, and underscores
+    other_chars = ''.join(random.choice(string.ascii_lowercase + string.digits + '_') for _ in range(length - 1))
+
+    return first_char + other_chars
+
+
 def run_code(text, args='-c', case='unknown', iteration=-1):
     """
     Executes the given Python code in a separate Python interpreter subprocess.
@@ -76,11 +94,14 @@ def run_code(text, args='-c', case='unknown', iteration=-1):
             cmd = [binary, text]
     else:
         if case == 'python_tool':
-            case_dir = os.path.join('tools', case)
+            case_dir = os.path.join(case)
         else:
             case_dir = os.path.join('scripts', case)
+        if case == 'bash':
+            script_name = os.path.join(case_dir, str(uuid.uuid4()) + ext)
+        else:
+            script_name = os.path.join(case_dir, generate_random_module_name() + ext)
         os.makedirs(case_dir, exist_ok=True)
-        script_name = os.path.join(case_dir, str(uuid.uuid4()) + ext)
         with open(script_name, 'wt') as f:
             f.write(text)
         cmd = [binary, script_name]
@@ -105,13 +126,13 @@ myid = int(os.getenv('AGENT0_ID', '0'))
 
 def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
     prefix = 'Code block should have first 3 backticks followed by the word: '
-    tool_note = '  Any tool already created can be used by adding `from tools import *` at top of any python code.'
+    tool_note = '  Any reusable tool already created can be used by adding `from tools.python_tool import *` at top of any python code.'
     cases = {
         'user': f'{prefix}user .  Code block should contain text that would be used as user message.  You should write this in the perspective of the user who is talking to an LLM.  Do not put code diff patches here.',
         'review': f'{prefix}review .  This triggers user to respond with full {__file__} code.  If the chat history does not appear to contain the full code, please trigger a review.',
         'bash': f'{prefix}bash .  Code block should contain new bash script (e.g. fathering system or environment (e.g. python) information or other useful actions) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.  Do not put code diff patches here.',
-        'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful tool, gathering system information, or other useful action) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task. {tool_note}',
-        'python_tool': f'{prefix}python_tool . Code block should contain already-tested pyton code that distills a python block into a useful class or function without test code in global scope.  The class or function can accept inputs and return outputs.  {tool_note}',
+        'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful reusable tool, gathering system information, or other useful action) to run.  If any global test code is included, do not comment it out or expect any code changes before the code is run.  All code and tests should run as-is.  Code will be run in a fork, you do not need to run another fork unless necessary for the task. {tool_note}',
+        'python_tool': f'{prefix}python_tool . Code block should contain already-tested python code written as a reusable tool, which distills a python block into a useful class or function without test code in global scope but that is well-documented with a doc string for each class and function.  The class or function can accept inputs and return outputs that should generally be easily consumed by other python tools (only prints should be human readable).  {tool_note}',
         'patch': f'{prefix}patch . Code block should contain the unified diff patch (applied with `patch -p1 --fuzzy < patchfile.diff` by agent code.  The diff should show lines to be added (prefixed with +) and lines to be removed (prefixed with -) from the original {__file__} file for the agent code.',
         'restart': f'{prefix}restart .  This triggers a new fork to run the full {__file__} code.',
         'exit': f'{prefix}exit .  This triggers user to return out of current fork of running {__file__} code.',
@@ -151,7 +172,7 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
             case 'python':
                 # run python code
                 outputs.append(run_code(code, case='python', iteration=iteration))
-                system_prompt = system_prompt0 + finish
+                system_prompt = system_prompt0 + finish + "\n\nIf the python code successfully ran, run the `python_tool` case to generate a reusable tool.  If the python code was not successful, revise as required until it works as expected."
             case 'python_tool':
                 # run python code
                 outputs.append(run_code(code, case='python_tool', iteration=iteration))
@@ -170,6 +191,14 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
                 return outputs
             # agent can add new cases by editing this file and then restarting this file
     return outputs, system_prompt
+
+
+def setup_dynamic(path='python_tool'):
+    os.makedirs(path, exist_ok=True)
+    with open(os.path.join(path, '__init__.py'), 'wt') as f:
+        f.write("""import os, pkgutil
+__all__ = list(module for _, module, _ in pkgutil.iter_modules([os.path.dirname(__file__)]))
+""")
 
 
 def main_loop():
