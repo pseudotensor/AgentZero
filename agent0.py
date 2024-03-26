@@ -196,7 +196,7 @@ To succeed:
     completion_tokens = 0
     while True:
         if iteration == 0:
-            # reflect on current code status periodically
+            # start with showing code
             code_blocks = [dict(language='review', code=None)]
             assistant_content = None
         else:
