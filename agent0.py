@@ -213,8 +213,10 @@ def get_tool_imports(path='python_tools'):
     import os
     import importlib
 
-    with open(os.path.join(path, '__init__.py'), 'wt') as f:
-        f.write('\n')
+    init_path = os.path.join(path, '__init__.py')
+    if not os.path.isfile(init_path):
+        with open(init_path, 'wt') as f:
+            f.write('\n')
 
     # Attempt to import the SystemInformation class from each module
     import_lines = []
@@ -235,7 +237,7 @@ def get_tool_imports(path='python_tools'):
                 new_module_name = to_module_name(name)
                 old_module_path = os.path.join(path, module_name) + '.py'
                 new_module_path = os.path.join(path, new_module_name) + '.py'
-                if os.path.isfile(old_module_path):
+                if not os.path.isfile(new_module_path) and os.path.isfile(old_module_path):
                     with filelock.FileLock(old_module_path + '.lock'):
                         shutil.move(old_module_path, new_module_path)
                         import_lines.append("%sfrom %s.%s import %s" % (doc, path, new_module_path, name))
