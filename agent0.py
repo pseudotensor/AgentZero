@@ -59,7 +59,7 @@ def run_code(text, args='-c', case='unknown', iteration=-1):
             f.write(text)
         text = "patch -p1 --fuzzy < %s" % patch_name
 
-    if case == 'python':
+    if case in ['python', 'python_tool']:
         ext = '.py'
         binary = sys.executable
     elif case in ['bash', 'patch']:
@@ -75,7 +75,10 @@ def run_code(text, args='-c', case='unknown', iteration=-1):
         else:
             cmd = [binary, text]
     else:
-        case_dir = os.path.join('scripts', case)
+        if case == 'python_tool':
+            case_dir = os.path.join('tools', case)
+        else:
+            case_dir = os.path.join('scripts', case)
         os.makedirs(case_dir, exist_ok=True)
         script_name = os.path.join(case_dir, str(uuid.uuid4()) + ext)
         with open(script_name, 'wt') as f:
@@ -102,11 +105,13 @@ myid = int(os.getenv('AGENT0_ID', '0'))
 
 def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
     prefix = 'Code block should have first 3 backticks followed by the word: '
+    tool_note = '  Any tool already created can be used by adding `from tools import *` at top of any python code.'
     cases = {
         'user': f'{prefix}user .  Code block should contain text that would be used as user message.  You should write this in the perspective of the user who is talking to an LLM.  Do not put code diff patches here.',
         'review': f'{prefix}review .  This triggers user to respond with full {__file__} code.  If the chat history does not appear to contain the full code, please trigger a review.',
         'bash': f'{prefix}bash .  Code block should contain new bash script (e.g. fathering system or environment (e.g. python) information or other useful actions) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.  Do not put code diff patches here.',
-        'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful tool, gathering system information, or other useful action) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.',
+        'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful tool, gathering system information, or other useful action) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task. {tool_note}',
+        'python_tool': f'{prefix}python_tool . Code block should contain already-tested pyton code that distills a python block into a useful class or function without test code in global scope.  The class or function can accept inputs and return outputs.  {tool_note}',
         'patch': f'{prefix}patch . Code block should contain the unified diff patch (applied with `patch -p1 --fuzzy < patchfile.diff` by agent code.  The diff should show lines to be added (prefixed with +) and lines to be removed (prefixed with -) from the original {__file__} file for the agent code.',
         'restart': f'{prefix}restart .  This triggers a new fork to run the full {__file__} code.',
         'exit': f'{prefix}exit .  This triggers user to return out of current fork of running {__file__} code.',
@@ -146,6 +151,10 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
             case 'python':
                 # run python code
                 outputs.append(run_code(code, case='python', iteration=iteration))
+                system_prompt = system_prompt0 + finish
+            case 'python_tool':
+                # run python code
+                outputs.append(run_code(code, case='python_tool', iteration=iteration))
                 system_prompt = system_prompt0 + finish
             case 'patch':
                 # to allow recursion
