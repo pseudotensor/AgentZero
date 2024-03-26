@@ -1,11 +1,15 @@
 #!python
 import inspect
 import os
+import shutil
 import sys
 import uuid
 import random
 import string
 import pprint
+import re
+
+import filelock
 
 """
 Primordial code for automatic generation of complex agents through automatic agent learning (AutoAL).
@@ -159,7 +163,8 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
                   f"Note that this code block is interpreted by the agent code and will be run,"
                   f" so choose reasonable cases and code blocks with meaningful exploration"
                   f" (e.g. see what you can do in bash, python, etc.).")
-        finish += '\n\nExisting python tools can be imported as follows, with the doc string given before the import:\n\n' + '\n\n'.join(get_tool_imports())
+        finish += '\n\nExisting python tools can be imported as follows, with the doc string given before the import:\n\n' + '\n\n'.join(
+            get_tool_imports())
         system_prompt = system_prompt0 + finish
 
         match lang:
@@ -212,13 +217,11 @@ def get_tool_imports(path='python_tools'):
         f.write('\n')
 
     # Attempt to import the SystemInformation class from each module
-    modules = []
     import_lines = []
     for filename in os.listdir(path):
         if filename.endswith('.py') and filename != '__init__.py':
             module_name = filename[:-3]
             module = importlib.import_module(f".{module_name}", package=path)
-            modules.append(module)
             custom_classes, custom_functions = get_custom_classes_and_functions(module)
             all_custom = {}
             all_custom.update(custom_classes)
@@ -229,7 +232,13 @@ def get_tool_imports(path='python_tools'):
                     doc = ""
                 else:
                     doc = '#%s\n' % doc.split('\n')[0]
-                import_lines.append("%sfrom %s.%s import %s" % (doc, path, module_name, name))
+                new_module_name = to_module_name(name)
+                old_module_path = os.path.join(path, module_name) + '.py'
+                new_module_path = os.path.join(path, new_module_name) + '.py'
+                if os.path.isfile(old_module_path):
+                    with filelock.FileLock(old_module_path + '.lock'):
+                        shutil.move(old_module_path, new_module_path)
+                        import_lines.append("%sfrom %s.%s import %s" % (doc, path, new_module_path, name))
 
     return import_lines
 
@@ -239,7 +248,6 @@ def is_defined_in_module(obj, module):
 
 
 def get_custom_classes_and_functions(module):
-
     # Function to determine if an object is a non-native class
     def is_custom_class(obj):
         return inspect.isclass(obj) and obj.__module__ == module.__name__
@@ -255,8 +263,26 @@ def get_custom_classes_and_functions(module):
     return custom_classes, custom_functions
 
 
+def to_module_name(name):
+    """
+    Convert a class or function name to a Pythonic module name.
+
+    Parameters:
+    - name (str): The original class or function name in CamelCase or mixed case.
+
+    Returns:
+    - str: A module name in lowercase with underscores between words.
+    """
+    # Insert an underscore before all capital letters except the first one
+    # and convert the entire string to lowercase
+    module_name = re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
+
+    # Optional: replace any special characters here if needed (e.g., '-')
+
+    return module_name
+
+
 def main_loop():
-    import re
     # Regex pattern to match code blocks with optional language identifiers
     pattern = re.compile(r"```(.*?)(\n[\s\S]*?)?```", re.DOTALL)
 
@@ -341,7 +367,7 @@ To succeed:
 
         iteration += 1
         all_outputs.append(outputs)
-        with open('state_%s.txt', 'wt') as f:
+        with open('state_%s_%s.txt' % (myid), 'wt') as f:
             f.write(str(all_outputs))
 
 
