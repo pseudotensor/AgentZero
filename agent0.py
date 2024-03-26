@@ -5,6 +5,7 @@ import sys
 import uuid
 import random
 import string
+import pprint
 
 """
 Primordial code for automatic generation of complex agents through automatic agent learning (AutoAL).
@@ -65,7 +66,7 @@ def generate_random_module_name(length=8):
     return first_char + other_chars
 
 
-def run_code(text, args='-c', case='unknown', iteration=-1):
+def run_code(text, args='-c', case='unknown', iteration=-1, limit_output=10000):
     """
     Executes the given Python code in a separate Python interpreter subprocess.
     Returns the stdout and stderr outputs as separate strings.
@@ -118,6 +119,11 @@ def run_code(text, args='-c', case='unknown', iteration=-1):
     except BaseException as e:
         exception = str(e)
 
+    if stdout and len(stdout) > limit_output:
+        stdout = stdout[:limit_output]
+    if stderr and len(stderr) > limit_output:
+        stderr = stderr[:limit_output]
+
     return dict(iteration=iteration, case=case, stdout=stdout, stderr=stderr, exception=exception)
 
 
@@ -127,16 +133,19 @@ myid = int(os.getenv('AGENT0_ID', '0'))
 
 def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
     prefix = 'Code block should have first 3 backticks followed by the word: '
+    limit = '  Try to ensure any outputs of the code are limited to no more than 1000 characters or about 20 items in a list, to avoid overflow of context for the LLM.  Or have any output go to a file, then extract the required information from the file.  Or simply take one example (e.g. single image) from list, do not make code or scripts dump out entire directory listings or other large lists.'
+    debug = ' If debugging is required, add print statements to python code or bash code.'
     cases = {
         'user': f'{prefix}user .  Code block should contain text that would be used as user message.  You should write this in the perspective of the user who is talking to an LLM.  Do not put code diff patches here.',
         'review': f'{prefix}review .  This triggers user to respond with full {__file__} code.  If the chat history does not appear to contain the full code, please trigger a review.',
-        'bash': f'{prefix}bash .  Code block should contain new bash script (e.g. fathering system or environment (e.g. python) information or other useful actions) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.  Do not put code diff patches here.',
-        'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful reusable tool, gathering system information, or other useful action) to run.  If any global test code is included, do not comment it out or expect any code changes before the code is run.  All code and tests should run as-is.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.',
-        'python_tools': f'{prefix}python_tools . Code block should contain already-tested python code written as a reusable tool, which distills a python block into a useful class or function without test code in global scope but that is well-documented with a doc string for each class and function.  Ensure the first line of the doc string gives the most relevant short description.  The class or function can accept inputs and return outputs that should generally be easily consumed by other python tools (only prints should be human readable).',
+        'bash': f'{prefix}bash .  Code block should contain new bash script (e.g. fathering system or environment (e.g. python) information or other useful actions) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.  This can be used to list files on disk to find images, audio, pdfs, etc. for testing tools.  This can also be used for echo of a python tool to see its code for debugging usage.  Do not put code diff patches here. {limit} {debug}',
+        'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful reusable tool, gathering system information, or other useful action) to run.  If any global test code is included, do not comment it out or expect any code changes before the code is run.  All code and tests should run as-is.  Code will be run in a fork, you do not need to run another fork unless necessary for the task. {limit} {debug}',
+        'python_tools': f'{prefix}python_tools . Code block should contain already-tested python code written as a reusable tool, which distills a python block into a useful class or function without test code in global scope but that is well-documented with a doc string for each class and function.  Ensure the first line of the doc string gives the most relevant short description.  The class or function can accept inputs and return outputs that should generally be easily consumed by other python tools (only prints should be human readable). {limit}',
         'patch': f'{prefix}patch . Code block should contain the unified diff patch (applied with `patch -p1 --fuzzy < patchfile.diff` by agent code.  The diff should show lines to be added (prefixed with +) and lines to be removed (prefixed with -) from the original {__file__} file for the agent code.',
         'restart': f'{prefix}restart .  This triggers a new fork to run the full {__file__} code.',
         'exit': f'{prefix}exit .  This triggers user to return out of current fork of running {__file__} code.',
     }
+    pretty_cases = pprint.pformat(cases, indent=4)
 
     system_prompt = system_prompt0
     outputs = []
@@ -144,13 +153,13 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
         lang = code_dict['language']
         code = code_dict['code']
         finish = (f"  Always finish your responses by choosing one or more of the cases:"
-                  f" {cases},"
+                  f" {pretty_cases},"
                   f" by including a Markdown code block for each case and appending the case name to the starting backticks as if it were the language.  "
                   f"If you just reviewed the code, do not repeat your review until other actions have been performed.  "
                   f"Note that this code block is interpreted by the agent code and will be run,"
                   f" so choose reasonable cases and code blocks with meaningful exploration"
                   f" (e.g. see what you can do in bash, python, etc.).")
-        finish += 'Existing python tools can be imported as follows, with the doc string given before the import:\n\n' + get_tool_imports()
+        finish += '\n\nExisting python tools can be imported as follows, with the doc string given before the import:\n\n' + '\n\n'.join(get_tool_imports())
         system_prompt = system_prompt0 + finish
 
         match lang:
@@ -169,19 +178,19 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
                     system_prompt += """In this iteration, your primary task is to review the code for potential improvements given the history of feedback from the user (which is just automated agent code you are effectively running).""" + finish
             case 'bash':
                 # run bash command
-                outputs.append(run_code(code, case='bash', iteration=iteration))
+                outputs.append(run_code(code, case='bash', iteration=iteration, limit_output=1000))
                 system_prompt = system_prompt0 + finish
             case 'python':
                 # run python code
-                outputs.append(run_code(code, case='python', iteration=iteration))
+                outputs.append(run_code(code, case='python', iteration=iteration, limit_output=1000))
                 system_prompt = system_prompt0 + finish + "\n\nIf the python code successfully ran, run the `python_tools` case to generate a reusable tool.  If the python code was not successful, revise as required until it works as expected."
             case 'python_tools':
                 # run python code
-                outputs.append(run_code(code, case='python_tools', iteration=iteration))
+                outputs.append(run_code(code, case='python_tools', iteration=iteration, limit_output=1000))
                 system_prompt = system_prompt0 + finish
             case 'patch':
                 # to allow recursion
-                outputs.append(run_code(code, case='patch', iteration=iteration))
+                outputs.append(run_code(code, case='patch', iteration=iteration, limit_output=1000))
                 system_prompt += """You have edited the agent code, if you plan to restart with this code, do not forget to have a code block with code tag 'restart' (no quotes).""" + finish
             case 'restart':
                 # restart updated code (recursion)
@@ -220,9 +229,9 @@ def get_tool_imports(path='python_tools'):
                     doc = ""
                 else:
                     doc = '#%s\n' % doc.split('\n')[0]
-                import_lines.append("%sfrom %s.%s import %s\n\n" % (doc, path, module_name, name))
+                import_lines.append("%sfrom %s.%s import %s" % (doc, path, module_name, name))
 
-    print(import_lines)
+    return import_lines
 
 
 def is_defined_in_module(obj, module):
@@ -258,7 +267,7 @@ You are allowed to use any and all resources, tactics, code, or commands in orde
 To succeed:
 * Focus on embodied capabilities of the agent and aim to extend or enhance these capabilities through your actions.
 * Your responses should include actionable and clear code blocks that offer tangible improvements or new functionalities.
-* Avoid irrelevant or placeholder code that requires modification.  Every code block should run as-is on the user's system and complete in a finite time (no waiting on microphone or other such input devices).
+* Avoid irrelevant, generic, or placeholder code that requires modification.  E.g. file paths should refer to real files, urls should be real urls, etc.  Every code block should run as-is on the user's system and complete in a finite time (no waiting on microphone or other such input devices).
 * Focus on practical, implementable solutions that directly contribute to the agent's performance in the competition.
 * Remember, the quality and relevance of your code blocks are crucial for your success.
 * Focus on embodied capabilities of the agent.  Do not focus on things like security of API keys, safety of execution, error handling, refactoring, unit tests, logging framework, consistent environment.
