@@ -1,7 +1,7 @@
 
 
 def test_process_fnf():
-    from agent0 import process_fnf
+    from agent0 import process_stderr
 
     stderr = """Traceback (most recent call last):
       File "/opt/pycharm-community-2023.3.3/plugins/python-ce/helpers/pydev/pydevd.py", line 1534, in _exec
@@ -13,13 +13,14 @@ def test_process_fnf():
       File "scripts/python/zqvmnlef.py", line 19, in classify_image_with_openai_api
         with open(image_path, 'rb') as image:
     FileNotFoundError: [Errno 2] No such file or directory: '/home/jon/h2ogpt/papers/technical-report/images/h2oGPT-light.png'"""
-    stderr_new = process_fnf(stderr)
+    stderr_new = process_stderr(stderr)
 
     print(stderr_new)
+    assert "Did you mean instead: '/home/jon/h2ogpt/papers/technical-report/images/h2oGPT-light.pdf'?" in stderr_new
 
 
 def test_process_mnf():
-    from agent0 import process_fnf
+    from agent0 import process_stderr
 
     stderr = """Traceback (most recent call last):
       File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
@@ -27,6 +28,7 @@ def test_process_mnf():
     ModuleNotFoundError: No module named '..python_tools.system_info'
     """
 
-    stderr_new = process_fnf(stderr)
+    stderr_new = process_stderr(stderr)
 
     print(stderr_new)
+    assert "Did you mean instead: '..python_tools.get_system_info'?" in stderr_new

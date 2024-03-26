@@ -156,28 +156,27 @@ def process_stderr(stderr):
             tag = mnf_tag
             line_split = line_split_mnf
         else:
-            tag = None
-            line_split = None
-        if tag:
-            missing_filename = ast.literal_eval(line_split[1])
-            if tag == mnf_tag:
-                missing_filename = missing_filename.replace('.', '/').replace('//', '..').replace('..', '../')
-                missing_filename += '.py'
-            missing_dir = os.path.dirname(missing_filename)
-            missing_filename = os.path.basename(missing_filename)
-            if os.path.isdir(missing_dir):
-                all_files = os.listdir(missing_dir)
-                if tag == mnf_tag:
-                    all_files = [x for x in all_files if x.endswith('.py')]
+            continue
 
-                closest_matches = difflib.get_close_matches(missing_filename, all_files, n=1, cutoff=0.1)
-                if closest_matches:
-                    suggestion = os.path.join(missing_dir, closest_matches[0])
-                    if tag == mnf_tag:
-                        suggestion = suggestion.replace('.py', '').replace('../', '..').replace('/', '.')
-                    lines_new.append(f"    Did you mean instead: '{suggestion}'?")
-            else:
-                lines_new.append("    Directory %s does not exist" % missing_dir)
+        missing_filename = ast.literal_eval(line_split[1])
+        if tag == mnf_tag:
+            missing_filename = missing_filename.replace('.', os.sep).replace(os.sep*2, os.pardir).replace(os.pardir, os.pardir + os.sep)
+            missing_filename += '.py'
+        missing_dir = os.path.dirname(missing_filename)
+        missing_filename = os.path.basename(missing_filename)
+        if os.path.isdir(missing_dir):
+            all_files = os.listdir(missing_dir)
+            if tag == mnf_tag:
+                all_files = [x for x in all_files if x.endswith('.py')]
+
+            closest_matches = difflib.get_close_matches(missing_filename, all_files, n=1, cutoff=0.1)
+            if closest_matches:
+                suggestion = os.path.join(missing_dir, closest_matches[0])
+                if tag == mnf_tag:
+                    suggestion = suggestion.replace('.py', '').replace(os.pardir + os.sep, '..').replace(os.sep, '.')
+                lines_new.append(f"    Did you mean instead: '{suggestion}'?")
+        else:
+            lines_new.append("    Directory %s does not exist" % missing_dir)
     return '\n'.join(lines_new)
 
 
