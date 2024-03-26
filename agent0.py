@@ -104,13 +104,13 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
     prefix = 'Code block should have first 3 backticks followed by the word: '
     cases = {
         'user': f'{prefix}user .  Code block should contain text that would be used as user message.  You should write this in the perspective of the user who is talking to an LLM.  Do not put code diff patches here.',
-        'review': f'{prefix}review .  This triggers user to respond with full {__file__} code.',
+        'review': f'{prefix}review .  This triggers user to respond with full {__file__} code.  If the chat history does not appear to contain the full code, please trigger a review.',
         'bash': f'{prefix}bash .  Code block should contain new bash script (e.g. fathering system or environment (e.g. python) information or other useful actions) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.  Do not put code diff patches here.',
         'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful tool, gathering system information, or other useful action) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.',
-        'patch': f'{prefix}patch . Code block should contain the unified diff patch (applied with `patch -p1 --fuzzy < patchfile.diff` by agent code.  The diff should show lines to be added (prefixed with +) and lines to be removed (prefixed with -) from the original {__file__ } file for the agent code.',
+        'patch': f'{prefix}patch . Code block should contain the unified diff patch (applied with `patch -p1 --fuzzy < patchfile.diff` by agent code.  The diff should show lines to be added (prefixed with +) and lines to be removed (prefixed with -) from the original {__file__} file for the agent code.',
         'restart': f'{prefix}restart .  This triggers a new fork to run the full {__file__} code.',
         'exit': f'{prefix}exit .  This triggers user to return out of current fork of running {__file__} code.',
-        }
+    }
 
     system_prompt = system_prompt0
     outputs = []
@@ -179,6 +179,7 @@ To succeed:
 * Focus on practical, implementable solutions that directly contribute to the agent's performance in the competition.
 * Remember, the quality and relevance of your code blocks are crucial for your success.
 * Focus on embodied capabilities of the agent.  Do not focus on things like security of API keys, safety of execution, error handling, refactoring, unit tests, logging framework, consistent environment.
+* Ensure to try a variety of tasks, from simple tasks (getting system info, listing files, accessing files) to complex multi-step tasks (web search, image recognition, etc.)
 * If you have given a code block of some task or tool, do not repeat that code block again as every code block in the message will be run.
 * If any edits of the agent code {__file__} are to be done, that should be done through the edit code block by giving a fuzzy diff patch that will be applied with `patch -p1 --fuzzy < patchfile.diff`.
 """
@@ -190,8 +191,11 @@ To succeed:
 
     all_outputs = []
     iteration = 0
+    prompt_tokens = 0
+    total_tokens = 0
+    completion_tokens = 0
     while True:
-        if iteration % 10 == 0:
+        if iteration == 0:
             # reflect on current code status periodically
             code_blocks = [dict(language='review', code=None)]
             assistant_content = None
@@ -199,6 +203,9 @@ To succeed:
             # agent driven actions
             client_kwargs = dict(max_tokens=2048, stream=False, messages=messages, model=model)
             responses = client.chat.completions.create(**client_kwargs)
+            prompt_tokens = responses.usage.prompt_tokens
+            total_tokens = responses.usage.total_tokens
+            completion_tokens = responses.usage.completion_tokens
             assistant_content = responses.choices[0].message.content
 
             # Find all matches in the text
@@ -237,7 +244,8 @@ To succeed:
             messages.append(dict(role='user', content=user_content))
 
         # human monitor
-        print(f'iteration: {iteration}\n\nassistant: {assistant_content}\n\nuser: {user_content}')
+        print(
+            f'iteration: {iteration}\n\nassistant: {assistant_content}\n\nuser: {user_content}\n\nTokens: p:{prompt_tokens} c:{completion_tokens} t:{total_tokens}')
 
         iteration += 1
         all_outputs.append(outputs)
