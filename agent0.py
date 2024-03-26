@@ -1,4 +1,5 @@
 #!python
+import inspect
 import os
 import sys
 import uuid
@@ -77,7 +78,7 @@ def run_code(text, args='-c', case='unknown', iteration=-1):
             f.write(text)
         text = "patch -p1 --fuzzy < %s" % patch_name
 
-    if case in ['python', 'python_tool']:
+    if case in ['python', 'python_tools']:
         ext = '.py'
         binary = sys.executable
     elif case in ['bash', 'patch']:
@@ -93,7 +94,7 @@ def run_code(text, args='-c', case='unknown', iteration=-1):
         else:
             cmd = [binary, text]
     else:
-        if case == 'python_tool':
+        if case == 'python_tools':
             case_dir = os.path.join(case)
         else:
             case_dir = os.path.join('scripts', case)
@@ -126,13 +127,12 @@ myid = int(os.getenv('AGENT0_ID', '0'))
 
 def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
     prefix = 'Code block should have first 3 backticks followed by the word: '
-    tool_note = '  Any reusable tool already created can be used by adding `from tools.python_tool import *` at top of any python code.'
     cases = {
         'user': f'{prefix}user .  Code block should contain text that would be used as user message.  You should write this in the perspective of the user who is talking to an LLM.  Do not put code diff patches here.',
         'review': f'{prefix}review .  This triggers user to respond with full {__file__} code.  If the chat history does not appear to contain the full code, please trigger a review.',
         'bash': f'{prefix}bash .  Code block should contain new bash script (e.g. fathering system or environment (e.g. python) information or other useful actions) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.  Do not put code diff patches here.',
-        'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful reusable tool, gathering system information, or other useful action) to run.  If any global test code is included, do not comment it out or expect any code changes before the code is run.  All code and tests should run as-is.  Code will be run in a fork, you do not need to run another fork unless necessary for the task. {tool_note}',
-        'python_tool': f'{prefix}python_tool . Code block should contain already-tested python code written as a reusable tool, which distills a python block into a useful class or function without test code in global scope but that is well-documented with a doc string for each class and function.  The class or function can accept inputs and return outputs that should generally be easily consumed by other python tools (only prints should be human readable).  {tool_note}',
+        'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful reusable tool, gathering system information, or other useful action) to run.  If any global test code is included, do not comment it out or expect any code changes before the code is run.  All code and tests should run as-is.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.',
+        'python_tools': f'{prefix}python_tools . Code block should contain already-tested python code written as a reusable tool, which distills a python block into a useful class or function without test code in global scope but that is well-documented with a doc string for each class and function.  Ensure the first line of the doc string gives the most relevant short description.  The class or function can accept inputs and return outputs that should generally be easily consumed by other python tools (only prints should be human readable).',
         'patch': f'{prefix}patch . Code block should contain the unified diff patch (applied with `patch -p1 --fuzzy < patchfile.diff` by agent code.  The diff should show lines to be added (prefixed with +) and lines to be removed (prefixed with -) from the original {__file__} file for the agent code.',
         'restart': f'{prefix}restart .  This triggers a new fork to run the full {__file__} code.',
         'exit': f'{prefix}exit .  This triggers user to return out of current fork of running {__file__} code.',
@@ -150,7 +150,9 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
                   f"Note that this code block is interpreted by the agent code and will be run,"
                   f" so choose reasonable cases and code blocks with meaningful exploration"
                   f" (e.g. see what you can do in bash, python, etc.).")
+        finish += 'Existing python tools can be imported as follows, with the doc string given before the import:\n\n' + get_tool_imports()
         system_prompt = system_prompt0 + finish
+
         match lang:
             case 'user':
                 # Message to make user say, to act as request to assistant
@@ -172,10 +174,10 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
             case 'python':
                 # run python code
                 outputs.append(run_code(code, case='python', iteration=iteration))
-                system_prompt = system_prompt0 + finish + "\n\nIf the python code successfully ran, run the `python_tool` case to generate a reusable tool.  If the python code was not successful, revise as required until it works as expected."
-            case 'python_tool':
+                system_prompt = system_prompt0 + finish + "\n\nIf the python code successfully ran, run the `python_tools` case to generate a reusable tool.  If the python code was not successful, revise as required until it works as expected."
+            case 'python_tools':
                 # run python code
-                outputs.append(run_code(code, case='python_tool', iteration=iteration))
+                outputs.append(run_code(code, case='python_tools', iteration=iteration))
                 system_prompt = system_prompt0 + finish
             case 'patch':
                 # to allow recursion
@@ -193,12 +195,55 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
     return outputs, system_prompt
 
 
-def setup_dynamic(path='python_tool'):
-    os.makedirs(path, exist_ok=True)
+def get_tool_imports(path='python_tools'):
+    import os
+    import importlib
+
     with open(os.path.join(path, '__init__.py'), 'wt') as f:
-        f.write("""import os, pkgutil
-__all__ = list(module for _, module, _ in pkgutil.iter_modules([os.path.dirname(__file__)]))
-""")
+        f.write('\n')
+
+    # Attempt to import the SystemInformation class from each module
+    modules = []
+    import_lines = []
+    for filename in os.listdir(path):
+        if filename.endswith('.py') and filename != '__init__.py':
+            module_name = filename[:-3]
+            module = importlib.import_module(f".{module_name}", package=path)
+            modules.append(module)
+            custom_classes, custom_functions = get_custom_classes_and_functions(module)
+            all_custom = {}
+            all_custom.update(custom_classes)
+            all_custom.update(custom_functions)
+            for name, obj in all_custom.items():
+                doc = inspect.getdoc(obj) if is_defined_in_module(obj, module) else ""
+                if not doc:
+                    doc = ""
+                else:
+                    doc = '#%s\n' % doc.split('\n')[0]
+                import_lines.append("%sfrom %s.%s import %s\n\n" % (doc, path, module_name, name))
+
+    print(import_lines)
+
+
+def is_defined_in_module(obj, module):
+    return inspect.getmodule(obj) == module
+
+
+def get_custom_classes_and_functions(module):
+
+    # Function to determine if an object is a non-native class
+    def is_custom_class(obj):
+        return inspect.isclass(obj) and obj.__module__ == module.__name__
+
+    # Function to determine if an object is a non-native function
+    def is_custom_function(obj):
+        return inspect.isfunction(obj) and obj.__module__ == module.__name__
+
+    # Retrieve all custom classes and functions
+    custom_classes = {name: obj for name, obj in inspect.getmembers(module, is_custom_class)}
+    custom_functions = {name: obj for name, obj in inspect.getmembers(module, is_custom_function)}
+
+    return custom_classes, custom_functions
 
 
 def main_loop():
