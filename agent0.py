@@ -130,13 +130,12 @@ def run_code(text, args='-c', case='unknown', iteration=-1, limit_output=10000):
     if stderr and len(stderr) > limit_output:
         stderr = stderr[:limit_output]
 
-    stderr = process_fnf(stderr)
-    stderr = process_mnf(stderr)
+    stderr = process_stderr(stderr)
 
     return dict(iteration=iteration, case=case, stdout=stdout, stderr=stderr, exception=exception)
 
 
-def process_fnf(stderr):
+def process_stderr(stderr):
     if not stderr:
         return stderr
 
@@ -180,34 +179,6 @@ def process_fnf(stderr):
             else:
                 lines_new.append("    Directory %s does not exist" % missing_dir)
     return '\n'.join(lines_new)
-
-
-def process_mnf(stderr):
-    if not stderr:
-        return stderr
-
-#  'python_tools.system_info'
-
-
-    lines_new = []
-    lines = stderr.split('\n')
-    for line in lines:
-        lines_new.append(line)
-        line_split = line.split(fnf_tag)
-        if len(line_split) == 2:
-            missing_filename = ast.literal_eval(line_split[1])
-            missing_dir = os.path.dirname(missing_filename)
-            if os.path.isdir(missing_dir):
-                all_files = os.listdir(missing_dir)
-
-                closest_matches = difflib.get_close_matches(missing_filename, all_files, n=1, cutoff=0.1)
-                if closest_matches:
-                    suggestion = os.path.join(os.path.dirname(missing_filename), closest_matches[0])
-                    lines_new.append(f"    Did you mean instead: '{suggestion}'?")
-            else:
-                lines_new.append("    Directory %s does not exist" % missing_dir)
-    return '\n'.join(lines_new)
-
 
 
 # id of this running instance, children have higher numbers
