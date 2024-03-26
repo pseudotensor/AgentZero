@@ -16,3 +16,17 @@ def test_process_fnf():
     stderr_new = process_fnf(stderr)
 
     print(stderr_new)
+
+
+def test_process_mnf():
+    from agent0 import process_fnf
+
+    stderr = """Traceback (most recent call last):
+      File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
+      File "<frozen importlib._bootstrap>", line 1004, in _find_and_load_unlocked
+    ModuleNotFoundError: No module named '..python_tools.system_info'
+    """
+
+    stderr_new = process_fnf(stderr)
+
+    print(stderr_new)

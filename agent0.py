@@ -131,6 +131,7 @@ def run_code(text, args='-c', case='unknown', iteration=-1, limit_output=10000):
         stderr = stderr[:limit_output]
 
     stderr = process_fnf(stderr)
+    stderr = process_mnf(stderr)
 
     return dict(iteration=iteration, case=case, stdout=stdout, stderr=stderr, exception=exception)
 
@@ -140,6 +141,54 @@ def process_fnf(stderr):
         return stderr
 
     fnf_tag ='FileNotFoundError: [Errno 2] No such file or directory:'
+    mnf_tag ='ModuleNotFoundError: No module named'
+
+    lines_new = []
+    lines = stderr.split('\n')
+    for line in lines:
+        line = line.strip()
+        lines_new.append(line)
+        line_split_fnf = line.split(fnf_tag)
+        line_split_mnf = line.split(mnf_tag)
+        if len(line_split_fnf) == 2:
+            tag = fnf_tag
+            line_split = line_split_fnf
+        elif len(line_split_mnf) == 2:
+            tag = mnf_tag
+            line_split = line_split_mnf
+        else:
+            tag = None
+            line_split = None
+        if tag:
+            missing_filename = ast.literal_eval(line_split[1])
+            if tag == mnf_tag:
+                missing_filename = missing_filename.replace('.', '/').replace('//', '..').replace('..', '../')
+                missing_filename += '.py'
+            missing_dir = os.path.dirname(missing_filename)
+            missing_filename = os.path.basename(missing_filename)
+            if os.path.isdir(missing_dir):
+                all_files = os.listdir(missing_dir)
+                if tag == mnf_tag:
+                    all_files = [x for x in all_files if x.endswith('.py')]
+
+                closest_matches = difflib.get_close_matches(missing_filename, all_files, n=1, cutoff=0.1)
+                if closest_matches:
+                    suggestion = os.path.join(missing_dir, closest_matches[0])
+                    if tag == mnf_tag:
+                        suggestion = suggestion.replace('.py', '').replace('../', '..').replace('/', '.')
+                    lines_new.append(f"    Did you mean instead: '{suggestion}'?")
+            else:
+                lines_new.append("    Directory %s does not exist" % missing_dir)
+    return '\n'.join(lines_new)
+
+
+def process_mnf(stderr):
+    if not stderr:
+        return stderr
+
+#  'python_tools.system_info'
+
+
     lines_new = []
     lines = stderr.split('\n')
     for line in lines:
@@ -174,7 +223,7 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
         'user': f'{prefix}user .  Code block should contain text that would be used as user message.  You should write this in the perspective of the user who is talking to an LLM.  Do not put code diff patches here.',
         'review': f'{prefix}review .  This triggers user to respond with full {__file__} code.  If the chat history does not appear to contain the full code, please trigger a review.',
         'bash': f'{prefix}bash .  Code block should contain new bash script (e.g. fathering system or environment (e.g. python) information or other useful actions) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.  This can be used to list files on disk to find images, audio, pdfs, etc. for testing tools.  This can also be used for echo of a python tool to see its code for debugging usage.  Do not put code diff patches here. {limit} {debug}',
-        'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful reusable tool, gathering system information, or other useful action) to run.  If any global test code is included, do not comment it out or expect any code changes before the code is run.  All code and tests should run as-is.  Code will be run in a fork, you do not need to run another fork unless necessary for the task. {limit} {debug}',
+        'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful reusable tool, gathering system information, or other useful action) to run.  If any global test code is included, do not comment it out or expect any code changes before the code is run.  All code and tests should run as-is.  Code will be run in a fork, you do not need to run another fork unless necessary for the task. {limit} {debug} Ensure to include all required imports.',
         'python_tools': f'{prefix}python_tools . Code block should contain already-tested python code written as a reusable tool, which distills a python block into a useful class or function without test code in global scope but that is well-documented with a doc string for each class and function.  Ensure the first line of the doc string gives the most relevant short description.  The class or function can accept inputs and return outputs that should generally be easily consumed by other python tools (only prints should be human readable). {limit}',
         'patch': f'{prefix}patch . Code block should contain the unified diff patch (applied with `patch -p1 --fuzzy < patchfile.diff` by agent code.  The diff should show lines to be added (prefixed with +) and lines to be removed (prefixed with -) from the original {__file__} file for the agent code.',
         'restart': f'{prefix}restart .  This triggers a new fork to run the full {__file__} code.',
