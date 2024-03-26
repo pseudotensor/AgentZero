@@ -175,7 +175,7 @@ def process_stderr(stderr):
                 if tag == mnf_tag:
                     suggestion = suggestion.replace('.py', '').replace(os.pardir + os.sep, '..').replace(os.sep, '.')
                 lines_new.append(f"    Did you mean instead: '{suggestion}'?")
-        else:
+        elif missing_dir.strip():
             lines_new.append("    Directory %s does not exist" % missing_dir)
     return '\n'.join(lines_new)
 
