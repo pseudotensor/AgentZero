@@ -132,6 +132,16 @@ def run_code(text, args='-c', case='unknown', iteration=-1, limit_output=10000):
 
     stderr = process_stderr(stderr)
 
+    # remove and report on bad modules that fail even at import level (missing imports etc.)
+    # FIXME: Could pip install package here if global scope failure
+    if case == 'python_tool':
+        import_lines, bad_modules = get_tool_imports()
+        if bad_modules:
+            if not stderr:
+                stderr = ""
+            pretty_bad_modules = pprint.pformat(bad_modules, indent=4)
+            stderr += pretty_bad_modules
+
     return dict(iteration=iteration, case=case, stdout=stdout, stderr=stderr, exception=exception)
 
 
@@ -213,8 +223,12 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
                   f"Note that this code block is interpreted by the agent code and will be run,"
                   f" so choose reasonable actions and code blocks with meaningful exploration"
                   f" (e.g. see what you can do in bash, python, etc.).")
-        finish += '\n\nExisting python tools can be imported as follows, with the doc string given before the import:\n\n' + '\n\n'.join(
-            get_tool_imports())
+
+        import_lines, bad_modules = get_tool_imports()
+        if bad_modules:
+            print("Outside got bad modules: %s" % bad_modules)
+
+        finish += '\n\nExisting python tools can be imported as follows, with the doc string given before the import:\n\n' + '\n\n'.join(import_lines)
         system_prompt = system_prompt0 + finish
 
         match lang:
@@ -270,10 +284,18 @@ def get_tool_imports(path='python_tools'):
 
     # Attempt to import the SystemInformation class from each module
     import_lines = []
+    bad_modules = {}
     for filename in os.listdir(path):
         if filename.endswith('.py') and filename != '__init__.py':
             module_name = filename[:-3]
-            module = importlib.import_module(f".{module_name}", package=path)
+            try:
+                module = importlib.import_module(f".{module_name}", package=path)
+            except (ModuleNotFoundError, ImportError, SyntaxError) as e:
+                bad_file = os.path.join(path, filename)
+                print("bad module: %s hits this error and has been deleted:\n%s" % (bad_file, str(e)))
+                bad_modules[bad_file] = str(e)
+                os.remove(bad_file)
+                continue
             custom_classes, custom_functions = get_custom_classes_and_functions(module)
             all_custom = {}
             all_custom.update(custom_classes)
@@ -292,7 +314,7 @@ def get_tool_imports(path='python_tools'):
                         shutil.move(old_module_path, new_module_path)
                         import_lines.append("%sfrom %s.%s import %s" % (doc, path, new_module_path, name))
 
-    return import_lines
+    return import_lines, bad_modules
 
 
 def is_defined_in_module(obj, module):
