@@ -267,7 +267,7 @@ You are allowed to use any and all resources, tactics, code, or commands in orde
 To succeed:
 * Focus on embodied capabilities of the agent and aim to extend or enhance these capabilities through your actions.
 * Your responses should include actionable and clear code blocks that offer tangible improvements or new functionalities.
-* Avoid irrelevant, generic, or placeholder code that requires modification.  E.g. file paths should refer to real files, urls should be real urls, etc.  Every code block should run as-is on the user's system and complete in a finite time (no waiting on microphone or other such input devices).
+* Absolutely avoid generic placeholder code that requires modification.  E.g. have functions or classes take inputs and test with real files and urls.  E.g. file paths should refer to real files, urls should be real urls, etc.  Every code block should run as-is on the user's system and complete in a finite time (no waiting on microphone or other such input devices).
 * Focus on practical, implementable solutions that directly contribute to the agent's performance in the competition.
 * Remember, the quality and relevance of your code blocks are crucial for your success.
 * Focus on embodied capabilities of the agent.  Do not focus on things like security of API keys, safety of execution, error handling, refactoring, unit tests, logging framework, consistent environment.
