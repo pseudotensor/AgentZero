@@ -133,13 +133,14 @@ def run_code(text, args='-c', case='unknown', iteration=-1, limit_output=10000):
 
 # id of this running instance, children have higher numbers
 myid = int(os.getenv('AGENT0_ID', '0'))
+runid = str(uuid.uuid4())
 
 
 def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
     prefix = 'Code block should have first 3 backticks followed by the word: '
     limit = '  Try to ensure any outputs of the code are limited to no more than 1000 characters or about 20 items in a list, to avoid overflow of context for the LLM.  Or have any output go to a file, then extract the required information from the file.  Or simply take one example (e.g. single image) from list, do not make code or scripts dump out entire directory listings or other large lists.'
     debug = ' If debugging is required, add print statements to python code or bash code.'
-    cases = {
+    actions = {
         'user': f'{prefix}user .  Code block should contain text that would be used as user message.  You should write this in the perspective of the user who is talking to an LLM.  Do not put code diff patches here.',
         'review': f'{prefix}review .  This triggers user to respond with full {__file__} code.  If the chat history does not appear to contain the full code, please trigger a review.',
         'bash': f'{prefix}bash .  Code block should contain new bash script (e.g. fathering system or environment (e.g. python) information or other useful actions) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.  This can be used to list files on disk to find images, audio, pdfs, etc. for testing tools.  This can also be used for echo of a python tool to see its code for debugging usage.  Do not put code diff patches here. {limit} {debug}',
@@ -149,19 +150,19 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
         'restart': f'{prefix}restart .  This triggers a new fork to run the full {__file__} code.',
         'exit': f'{prefix}exit .  This triggers user to return out of current fork of running {__file__} code.',
     }
-    pretty_cases = pprint.pformat(cases, indent=4)
+    pretty_actions = pprint.pformat(actions, indent=4)
 
     system_prompt = system_prompt0
     outputs = []
     for code_dict in code_blocks:
         lang = code_dict['language']
         code = code_dict['code']
-        finish = (f"  Always finish your responses by choosing one or more of the cases:"
-                  f" {pretty_cases},"
+        finish = (f"  Always finish your responses by choosing one or more of the actions:"
+                  f" {pretty_actions},"
                   f" by including a Markdown code block for each case and appending the case name to the starting backticks as if it were the language.  "
                   f"If you just reviewed the code, do not repeat your review until other actions have been performed.  "
                   f"Note that this code block is interpreted by the agent code and will be run,"
-                  f" so choose reasonable cases and code blocks with meaningful exploration"
+                  f" so choose reasonable actions and code blocks with meaningful exploration"
                   f" (e.g. see what you can do in bash, python, etc.).")
         finish += '\n\nExisting python tools can be imported as follows, with the doc string given before the import:\n\n' + '\n\n'.join(
             get_tool_imports())
@@ -205,7 +206,7 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
             case 'exit':
                 # exit (undo recursion)
                 return outputs
-            # agent can add new cases by editing this file and then restarting this file
+            # agent can add new actions by editing this file and then restarting this file
     return outputs, system_prompt
 
 
@@ -299,8 +300,8 @@ To succeed:
 * Focus on practical, implementable solutions that directly contribute to the agent's performance in the competition.
 * Remember, the quality and relevance of your code blocks are crucial for your success.
 * Focus on embodied capabilities of the agent.  Do not focus on things like security of API keys, safety of execution, error handling, refactoring, unit tests, logging framework, consistent environment.
-* Ensure to try a variety of tasks, from simple tasks (getting system info, listing files, accessing files) to complex multi-step tasks (web search, image recognition, etc.)
-* If you have given a code block of some task or tool, do not repeat that code block again as every code block in the message will be run.
+* Ensure to create a variety of tasks, do a variety of actions, and make a variety of tools, from simple tools (getting system info, listing files, accessing files) to complex multi-step tasks (web search, image recognition, etc.)
+* If you have given a code block of some tool, do not repeat that code block again as every code block in the message will be run.
 * If any edits of the agent code {__file__} are to be done, that should be done through the edit code block by giving a fuzzy diff patch that will be applied with `patch -p1 --fuzzy < patchfile.diff`.
 """
 
@@ -340,7 +341,8 @@ To succeed:
             system_prompt = system_prompt0
             outputs = [dict(iteration=iteration, binary=None, case=None, stdout=None,
                             stderr="The provided code blocks were not actionable or are not valid code blocks."
-                                   " Let's try a different task or specify the task more clearly.",
+                                   " Let's try a create a new task (choose a case and give code block) or specify the task more clearly. Or try a different action, or build a new tool for a new task."
+                                   "If you believe there are no more things to do given the plan, come up with an exploration plan for doing diverse complex tasks, doing under-done actions, or making new agent tools.",
                             exception=None)]
 
         # update system prompt for the task
@@ -369,7 +371,7 @@ To succeed:
 
         iteration += 1
         all_outputs.append(outputs)
-        with open('state_%s_%s.txt' % (myid), 'wt') as f:
+        with open('state_%s_%s.txt' % (myid, runid), 'wt') as f:
             f.write(str(all_outputs))
 
 
