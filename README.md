@@ -10,6 +10,7 @@ Learnings:
 * Model never does other tasks like patch, rarely does bash.  Does review too much unless heavily prompt.
 * Model often thinks it's done, have to tell it to continue.
 * Model can't remember what tools it made, and anyways may start out with some tools, so provide it  class/function names and doc strings: `get_custom_classes_and_functions`
+* Model is really bad about basic imports
 
 TODO:
 * Have tools standardized. Need inputs/outputs as part of doc string and consumed for LLM to know what to do.

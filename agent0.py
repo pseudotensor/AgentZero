@@ -82,7 +82,7 @@ def run_code(text, case='unknown', iteration=-1, limit_output=10000, can_try_aga
         patch_name = os.path.join('patches', 'patchfile.diff' + str(uuid.uuid4()) + '.diff')
         with open(patch_name, 'wt') as f:
             f.write(text)
-        text = "patch -p1 --fuzzy < %s" % patch_name
+        text = "patch -u -p0 -F 1000 --batch < %s" % patch_name
 
     args = ''
     if case in ['python', 'python_tools']:
