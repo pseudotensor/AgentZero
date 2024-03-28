@@ -14,15 +14,14 @@ Learnings:
 TODO:
 * Have tools standardized. Need inputs/outputs as part of doc string and consumed for LLM to know what to do.
 * Similar ^ to using function tools to manage tools
-* `ModuleNotFoundError: No module named 'PyPDF2'` -- auto-install packages and retry
+* `ModuleNotFoundError: No module named 'PyPDF2'` -- auto-install packages and retry.  Mundane for LLM to do it.
 
 IDEAS:
 * Instead of monolithic system prompt for all tasks and letting model choose task, may have to have stricter tasks with well-defined steps
   * E.g. building a tool: python (fix errors), python, etc. python_tools, python_test_tools, repeat testing tool until passes all tests.
   * E.g. editing code.  Force it to edit code, add test of that addition, then restart with that change.  If fails still, then have it fix in parent.
 * Give it more information about where it is in path and suggested steps.
-  * E.g. if did python, then suggest next to make a tool.
-  * if did tool, suggest making test
-  * if did test, suggest running the test using the tool
-  * if test passes, try using multiple tools together to accomplish novel task
-  * 
+  * E.g. if making tool, suggest first pip install packages (unless do it for it)
+    * if did tool, suggest making test
+    * if did test, suggest running the test using the tool
+    * if test passes, try using multiple tools together to accomplish novel task

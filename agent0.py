@@ -71,7 +71,7 @@ def generate_random_module_name(length=8):
     return first_char + other_chars
 
 
-def run_code(text, args='-c', case='unknown', iteration=-1, limit_output=10000):
+def run_code(text, case='unknown', iteration=-1, limit_output=10000, can_try_again=False):
     """
     Executes the given Python code in a separate Python interpreter subprocess.
     Returns the stdout and stderr outputs as separate strings.
@@ -84,8 +84,10 @@ def run_code(text, args='-c', case='unknown', iteration=-1, limit_output=10000):
             f.write(text)
         text = "patch -p1 --fuzzy < %s" % patch_name
 
+    args = ''
     if case in ['python', 'python_tools']:
         ext = '.py'
+        args = '-c'
         binary = sys.executable
     elif case in ['bash', 'patch']:
         ext = '.sh'
@@ -129,7 +131,11 @@ def run_code(text, args='-c', case='unknown', iteration=-1, limit_output=10000):
     if stderr and len(stderr) > limit_output:
         stderr = stderr[:limit_output]
 
-    stderr = process_stderr(stderr)
+    stderr, try_again = process_stderr(stderr)
+    if try_again and can_try_again:
+        # FIXME: Could try a few times
+        ret = run_code(text, case=case, iteration=iteration, limit_output=limit_output, can_try_again=False)
+        stderr, try_again = process_stderr(ret['stderr'])
 
     # remove and report on bad modules that fail even at import level (missing imports etc.)
     # FIXME: Could pip install package here if global scope failure
@@ -145,8 +151,9 @@ def run_code(text, args='-c', case='unknown', iteration=-1, limit_output=10000):
 
 
 def process_stderr(stderr):
+    try_again = False
     if not stderr:
-        return stderr
+        return stderr, try_again
 
     fnf_tag ='FileNotFoundError: [Errno 2] No such file or directory:'
     mnf_tag ='ModuleNotFoundError: No module named'
@@ -167,10 +174,12 @@ def process_stderr(stderr):
         else:
             continue
 
-        missing_filename = ast.literal_eval(line_split[1])
+        missing_module = ast.literal_eval(line_split[1])
         if tag == mnf_tag:
-            missing_filename = missing_filename.replace('.', os.sep).replace(os.sep*2, os.pardir).replace(os.pardir, os.pardir + os.sep)
+            missing_filename = missing_module.replace('.', os.sep).replace(os.sep*2, os.pardir).replace(os.pardir, os.pardir + os.sep)
             missing_filename += '.py'
+        else:
+            missing_filename = missing_module
         missing_dir = os.path.dirname(missing_filename)
         missing_filename = os.path.basename(missing_filename)
         if os.path.isdir(missing_dir):
@@ -186,7 +195,17 @@ def process_stderr(stderr):
                 lines_new.append(f"    Did you mean instead: '{suggestion}'?")
         elif missing_dir.strip():
             lines_new.append("    Directory %s does not exist" % missing_dir)
-    return '\n'.join(lines_new)
+        elif tag == mnf_tag:
+            # then may be global module, let's help the LLM and pip install it
+            text = 'pip install %s' % missing_module
+            ret = run_code(text, case='bash', iteration=-1, limit_output=100)
+            if 'Successfully installed' in ret['stdout']:
+                for lines_success in ret['stdout'].split('\n'):
+                    if 'Successfully installed' in lines_success and missing_module in lines_success:
+                        lines_new = "%s was pip installed" % missing_module
+                        try_again = True
+
+    return '\n'.join(lines_new), try_again
 
 
 # id of this running instance, children have higher numbers
@@ -250,11 +269,11 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
                 system_prompt = system_prompt0 + finish
             case 'python':
                 # run python code
-                outputs.append(run_code(code, case='python', iteration=iteration, limit_output=1000))
+                outputs.append(run_code(code, case='python', iteration=iteration, limit_output=1000, can_try_again=True))
                 system_prompt = system_prompt0 + finish + "\n\nIf the python code successfully ran, run the `python_tools` case to generate a reusable tool.  If the python code was not successful, revise as required until it works as expected."
             case 'python_tools':
                 # run python code
-                outputs.append(run_code(code, case='python_tools', iteration=iteration, limit_output=1000))
+                outputs.append(run_code(code, case='python_tools', iteration=iteration, limit_output=1000, can_try_again=True))
                 system_prompt = system_prompt0 + finish
             case 'patch':
                 # to allow recursion
@@ -314,7 +333,9 @@ def get_tool_imports(path='python_tools'):
                 if not os.path.isfile(new_module_path) and os.path.isfile(old_module_path):
                     with filelock.FileLock(old_module_path + '.lock'):
                         shutil.move(old_module_path, new_module_path)
-                        import_lines.append("%sfrom %s.%s import %s" % (doc, path, new_module_path, name))
+                else:
+                    new_module_path = old_module_path
+                import_lines.append("%sfrom %s.%s import %s" % (doc, path, new_module_path, name))
 
     return import_lines, bad_modules
 
