@@ -363,6 +363,7 @@ def get_custom_classes_and_functions(module):
 def to_module_name(name):
     """
     Convert a class or function name to a Pythonic module name.
+    Avoids inserting underscores within acronyms.
 
     Parameters:
     - name (str): The original class or function name in CamelCase or mixed case.
@@ -372,7 +373,8 @@ def to_module_name(name):
     """
     # Insert an underscore before all capital letters except the first one
     # and convert the entire string to lowercase
-    module_name = re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
+    module_name = re.sub(r'((?<=[a-z])[A-Z]|(?<=[A-Z])[A-Z](?=[a-z]))', r'_\1', name).lower()
+
 
     # Optional: replace any special characters here if needed (e.g., '-')
 
