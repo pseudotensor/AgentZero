@@ -10,7 +10,6 @@ import random
 import string
 import pprint
 import re
-
 import filelock
 
 """
@@ -134,7 +133,7 @@ def run_code(text, args='-c', case='unknown', iteration=-1, limit_output=10000):
 
     # remove and report on bad modules that fail even at import level (missing imports etc.)
     # FIXME: Could pip install package here if global scope failure
-    if case == 'python_tool':
+    if case == 'python_tools':
         import_lines, bad_modules = get_tool_imports()
         if bad_modules:
             if not stderr:
@@ -204,7 +203,7 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
         'review': f'{prefix}review .  This triggers user to respond with full {__file__} code.  If the chat history does not appear to contain the full code, please trigger a review.',
         'bash': f'{prefix}bash .  Code block should contain new bash script (e.g. fathering system or environment (e.g. python) information or other useful actions) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.  This can be used to list files on disk to find images, audio, pdfs, etc. for testing tools.  This can also be used for echo of a python tool to see its code for debugging usage.  Do not put code diff patches here. {limit} {debug}',
         'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful reusable tool, gathering system information, or other useful action) to run.  If any global test code is included, do not comment it out or expect any code changes before the code is run.  All code and tests should run as-is.  Code will be run in a fork, you do not need to run another fork unless necessary for the task. {limit} {debug} Ensure to include all required imports.',
-        'python_tools': f'{prefix}python_tools . Code block should contain already-tested python code written as a reusable tool, which distills a python block into a useful class or function without test code in global scope but that is well-documented with a doc string for each class and function.  Ensure the first line of the doc string gives the most relevant short description.  The class or function can accept inputs and return outputs that should generally be easily consumed by other python tools (only prints should be human readable). {limit}',
+        'python_tools': f'{prefix}python_tools . Code block should contain already-tested python code written as a reusable tool, which distills a python block into a useful class or function without test code in global scope but that is well-documented with a doc string for each class and function.  Ensure the first line of the doc string gives the most relevant short description.  No global test code should be included and the code should be reusable as-is without changes.  The class or function can accept inputs and return outputs that should generally be easily consumed by other python tools (only prints should be human readable). {limit}',
         'patch': f'{prefix}patch . Code block should contain the unified diff patch (applied with `patch -p1 --fuzzy < patchfile.diff` by agent code.  The diff should show lines to be added (prefixed with +) and lines to be removed (prefixed with -) from the original {__file__} file for the agent code.',
         'restart': f'{prefix}restart .  This triggers a new fork to run the full {__file__} code.',
         'exit': f'{prefix}exit .  This triggers user to return out of current fork of running {__file__} code.',
@@ -277,6 +276,7 @@ def get_tool_imports(path='python_tools'):
     import os
     import importlib
 
+    os.makedirs(path, exist_ok=True)
     init_path = os.path.join(path, '__init__.py')
     if not os.path.isfile(init_path):
         with open(init_path, 'wt') as f:
@@ -294,7 +294,9 @@ def get_tool_imports(path='python_tools'):
                 bad_file = os.path.join(path, filename)
                 print("bad module: %s hits this error and has been deleted:\n%s" % (bad_file, str(e)))
                 bad_modules[bad_file] = str(e)
-                os.remove(bad_file)
+                dead_path = os.path.join(os.path.dirname(bad_file), 'dead')
+                os.makedirs(dead_path)
+                shutil.move(bad_file, dead_path)
                 continue
             custom_classes, custom_functions = get_custom_classes_and_functions(module)
             all_custom = {}
@@ -367,7 +369,7 @@ You are allowed to use any and all resources, tactics, code, or commands in orde
 To succeed:
 * Focus on embodied capabilities of the agent and aim to extend or enhance these capabilities through your actions.
 * Your responses should include actionable and clear code blocks that offer tangible improvements or new functionalities.
-* Absolutely avoid generic placeholder code that requires modification.  E.g. have functions or classes take inputs and test with real files and urls.  E.g. file paths should refer to real files, urls should be real urls, etc.  Every code block should run as-is on the user's system and complete in a finite time (no waiting on microphone or other such input devices).
+* Absolutely avoid generic, placeholder, or mock code that requires any modification.  E.g. have functions or classes take inputs and test with real files and urls.  E.g. file paths should refer to real files, urls should be real urls, etc.  Every code block should run as-is on the user's system and complete in a finite time (no waiting on microphone or other such input devices).
 * Focus on practical, implementable solutions that directly contribute to the agent's performance in the competition.
 * Remember, the quality and relevance of your code blocks are crucial for your success.
 * Focus on embodied capabilities of the agent.  Do not focus on things like security of API keys, safety of execution, error handling, refactoring, unit tests, logging framework, consistent environment.
@@ -395,9 +397,9 @@ To succeed:
             # agent driven actions
             client_kwargs = dict(max_tokens=2048, stream=False, messages=messages, model=model)
             responses = client.chat.completions.create(**client_kwargs)
-            prompt_tokens = responses.usage.prompt_tokens
-            total_tokens = responses.usage.total_tokens
-            completion_tokens = responses.usage.completion_tokens
+            prompt_tokens += responses.usage.prompt_tokens
+            total_tokens += responses.usage.total_tokens
+            completion_tokens += responses.usage.completion_tokens
             assistant_content = responses.choices[0].message.content
 
             # Find all matches in the text
