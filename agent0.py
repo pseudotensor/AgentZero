@@ -11,6 +11,7 @@ import string
 import pprint
 import re
 import filelock
+import importlib
 
 """
 Primordial code for automatic generation of complex agents through automatic agent learning (AutoAL).
@@ -291,24 +292,36 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
     return outputs, system_prompt
 
 
-def get_tool_imports(path='python_tools'):
-    import os
-    import importlib
+def invalidate_caches(path):
+    importlib.invalidate_caches()
 
+    import pkg_resources
+    importlib.reload(pkg_resources)
+
+    invalid_keys = []
+    for k, v in sys.path_importer_cache.items():
+        if path in k:
+            invalid_keys.append(k)
+    for k in invalid_keys:
+        sys.path_importer_cache.pop(k, None)
+
+
+def get_tool_imports(path='python_tools'):
     os.makedirs(path, exist_ok=True)
     init_path = os.path.join(path, '__init__.py')
     if not os.path.isfile(init_path):
         with open(init_path, 'wt') as f:
             f.write('\n')
 
-    # Attempt to import the SystemInformation class from each module
+    invalidate_caches(path)
+
     import_lines = []
     bad_modules = {}
     for filename in os.listdir(path):
         if filename.endswith('.py') and filename != '__init__.py':
             module_name = filename[:-3]
             try:
-                module = importlib.import_module(f".{module_name}", package=path)
+                module = importlib.import_module(f"{path}.{module_name}")
             except (ModuleNotFoundError, ImportError, SyntaxError) as e:
                 bad_file = os.path.join(path, filename)
                 print("bad module: %s hits this error and has been deleted:\n%s" % (bad_file, str(e)))
