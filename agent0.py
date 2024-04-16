@@ -18,7 +18,7 @@ Primordial code for automatic generation of complex agents through automatic age
 
 """
 
-num_doc_lines = 10
+num_doc_lines = 20
 
 
 def get_client():
@@ -223,12 +223,12 @@ def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
     actions = {
         'user': f'{prefix}user .  Code block should contain text that would be used as user message.  You should write this in the perspective of the user who is talking to an LLM.  Do not put code diff patches here.',
         'review': f'{prefix}review .  This triggers user to respond with full {__file__} code.  If the chat history does not appear to contain the full code, please trigger a review.',
-        'bash': f'{prefix}bash .  Code block should contain new bash script (e.g. fathering system or environment (e.g. python) information or other useful actions) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.  This can be used to list files on disk to find images, audio, pdfs, etc. for testing tools.  This can also be used for echo of a python tool to see its code for debugging usage.  Do not put code diff patches here. {limit} {debug}',
-        'python': f'{prefix}python . Code block should contain new pyton code (e.g. useful reusable tool, gathering system information, or other useful action) to run.  If any global test code is included, do not comment it out or expect any code changes before the code is run.  All code and tests should run as-is.  Code will be run in a fork, you do not need to run another fork unless necessary for the task. {limit} {debug} Ensure to include all required imports.',
-        'python_tools': f'{prefix}python_tools . Code block should contain already-tested python code written as a reusable tool, which distills a python block into a useful class or function without test code in global scope but that is well-documented with a doc string for each class and function.  Ensure the first line of the doc string gives the most relevant short description.  No global test code should be included and the code should be reusable as-is without changes.  The class or function can accept inputs and return outputs that should generally be easily consumed by other python tools (only prints should be human readable). {limit}',
-        'patch': f'{prefix}patch . Code block should contain the unified diff patch (applied with `patch -p1 --fuzzy < patchfile.diff` by agent code.  The diff should show lines to be added (prefixed with +) and lines to be removed (prefixed with -) from the original {__file__} file for the agent code.',
-        'restart': f'{prefix}restart .  This triggers a new fork to run the full {__file__} code.',
-        'exit': f'{prefix}exit .  This triggers user to return out of current fork of running {__file__} code.',
+        'bash': f'{prefix}bash .  Triggers bash system command executation tool, where your code block should contain new bash script (e.g. fathering system or environment (e.g. python) information or other useful actions) to run.  Code will be run in a fork, you do not need to run another fork unless necessary for the task.  This can be used to list files on disk to find images, audio, pdfs, etc. for testing tools.  This can also be used for echo of a python tool to see its code for debugging usage.  Do not put code diff patches here. {limit} {debug}',
+        'python': f'{prefix}python . Triggers python executation tool using code block, where your code block should contain new python code to run.  It can use tools or test tools created by running python_tools action.  You can use prints to check success of the code, since outputs will be returned to you.  This code block will be run as-is in a fork and response given back to you, so you do not need to run another fork. {limit} {debug} Ensure to include all required imports.',
+        'python_tools': f'{prefix}python_tools . Triggers code block extraction to create a tool, where your code block should contain python code written as a reusable tool, e.g a useful class or function, without test code in global scope.  It should be well-documented with a doc string for each class and function.  Ensure the first line of the doc string gives the most relevant short description.  Ensure the doc string includes single line example of how to use it.  No global test code should be included and the code should be reusable as-is without changes.  The class or function can accept inputs and return outputs that should generally be easily consumed by other python tools, so do not rely upon prints for tools except to debug it. {limit}',
+        'patch': f'{prefix}patch . Triggers python code patch appling tool using code block, where your code block should contain the unified diff patch (applied with `patch -p1 --fuzzy < patchfile.diff` by agent code.  The diff should show lines to be added (prefixed with +) and lines to be removed (prefixed with -) from the original {__file__} file for the agent code.  You can also patch python tools.',
+        'restart': f'{prefix}restart .  Trigger restart, which launches a new fork to run the full (possibly edited via patches) {__file__} code.',
+        'exit': f'{prefix}exit .  Triggers exit, which makes user agent code return out of current fork of running {__file__} code.',
     }
     pretty_actions = pprint.pformat(actions, indent=4)
 
@@ -338,6 +338,8 @@ def get_tool_imports(path='python_tools'):
             all_custom.update(custom_functions)
             for name, obj in all_custom.items():
                 doc = extract_object_info(obj) if is_defined_in_module(obj, module) else ""
+                # as comment
+                doc = '\n'.join(['#%s' % x for x in doc.splitlines()])
                 new_module_name = to_module_name(name)
                 old_module_path = os.path.join(path, module_name) + '.py'
                 new_module_path = os.path.join(path, new_module_name) + '.py'
@@ -346,7 +348,11 @@ def get_tool_imports(path='python_tools'):
                         shutil.move(old_module_path, new_module_path)
                 else:
                     new_module_path = old_module_path
-                import_lines.append("%sfrom %s.%s import %s" % (doc, path, new_module_path, name))
+                if inspect.isclass(obj):
+                    helper = "# To import the above class, use:"
+                else:
+                    helper = "# To import the above function, use:"
+                import_lines.append("%s\n%s\nfrom %s.%s import %s" % (doc, helper, path, new_module_path, name))
 
     return import_lines, bad_modules
 
