@@ -19,6 +19,7 @@ Primordial code for automatic generation of complex agents through automatic age
 """
 
 num_doc_lines = 20
+history_level = 1
 
 
 def get_client():
@@ -530,6 +531,9 @@ To succeed:
             messages.append(dict(role='assistant', content=assistant_content))
         if user_content:
             messages.append(dict(role='user', content=user_content))
+        if len(messages) > history_level + 1:
+            # + 1 to keep current message plus previous one
+            messages = messages[-(history_level + 1):]
 
         # human monitor
         print(
