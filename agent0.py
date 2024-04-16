@@ -219,7 +219,7 @@ runid = str(uuid.uuid4())
 
 def run_code_blocks(code_blocks, system_prompt0='', iteration=-1):
     prefix = 'Code block should have first 3 backticks followed by the word: '
-    limit = '  Try to ensure any outputs of the code are limited to no more than 1000 characters or about 20 items in a list, to avoid overflow of context for the LLM.  Or have any output go to a file, then extract the required information from the file.  Or simply take one example (e.g. single image) from list, do not make code or scripts dump out entire directory listings or other large lists.'
+    limit = '  Try to ensure any outputs of the code are limited to no more than 1000 characters or about 20 items in a list, to avoid overflow of context for the LLM.  Or have any output go to a file, then extract the required information from the file.  Or simply take one example (e.g. single image) from list, do not make code or scripts dump out entire directory listings or other large lists.    If you do not have file names or paths necessary to run the tool, first run bash script to find it.  Any bash or python code should absolutely not contain placeholders and should not just be examples, because they will be run as-is on the user computer.  If files are required, look for them on the user computer using bash or python code blocks first, then use those results to generate the real python or bash code to run without modification by user.'
     debug = ' If debugging is required, add print statements to python code or bash code.'
     actions = {
         'user': f'{prefix}user .  Code block should contain text that would be used as user message.  You should write this in the perspective of the user who is talking to an LLM.  Do not put code diff patches here.',
@@ -463,7 +463,7 @@ You are allowed to use any and all resources, tactics, code, or commands in orde
 To succeed:
 * Focus on embodied capabilities of the agent and aim to extend or enhance these capabilities through your actions.
 * Your responses should include actionable and clear code blocks that offer tangible improvements or new functionalities.
-* Absolutely avoid generic, placeholder, or mock code that requires any modification.  E.g. have functions or classes take inputs and test with real files and urls.  E.g. file paths should refer to real files, urls should be real urls, etc.  Every code block should run as-is on the user's system and complete in a finite time (no waiting on microphone or other such input devices).
+* Absolutely avoid generic, placeholder, example, or mock code that requires any modification.  E.g. have functions or classes take inputs and test with real files and urls.  E.g. file paths should refer to real user files, urls should be real urls, etc.  Every code block should run as-is on the user's system and complete in a finite time (no waiting on microphone or other such input devices).
 * Focus on practical, implementable solutions that directly contribute to the agent's performance in the competition.
 * Remember, the quality and relevance of your code blocks are crucial for your success.
 * Focus on embodied capabilities of the agent.  Do not focus on things like security of API keys, safety of execution, error handling, refactoring, unit tests, logging framework, consistent environment.
