@@ -18,6 +18,8 @@ Primordial code for automatic generation of complex agents through automatic age
 
 """
 
+num_doc_lines = 5
+
 
 def get_client():
     from openai import AzureOpenAI
@@ -335,11 +337,7 @@ def get_tool_imports(path='python_tools'):
             all_custom.update(custom_classes)
             all_custom.update(custom_functions)
             for name, obj in all_custom.items():
-                doc = inspect.getdoc(obj) if is_defined_in_module(obj, module) else ""
-                if not doc:
-                    doc = ""
-                else:
-                    doc = '#%s\n' % doc.split('\n')[0]
+                doc = extract_object_info(obj) if is_defined_in_module(obj, module) else ""
                 new_module_name = to_module_name(name)
                 old_module_path = os.path.join(path, module_name) + '.py'
                 new_module_path = os.path.join(path, new_module_name) + '.py'
@@ -371,6 +369,45 @@ def get_custom_classes_and_functions(module):
     custom_functions = {name: obj for name, obj in inspect.getmembers(module, is_custom_function)}
 
     return custom_classes, custom_functions
+
+
+def extract_object_info(obj):
+    info = {}
+    # Check if the object is a class, and iterate over all methods
+    if inspect.isclass(obj):
+        for name, member in inspect.getmembers(obj, predicate=inspect.isfunction):
+            info[name] = format_as_comment(name, get_member_info(member))
+    elif inspect.isfunction(obj) or inspect.ismethod(obj):
+        # Directly get info if obj is a function or method
+        info[obj.__name__] = format_as_comment(obj.__name__, get_member_info(obj))
+    return info
+
+
+def get_member_info(member):
+    # Get the signature of the member
+    sig = inspect.signature(member)
+    # Format the parameters into a signature string
+    formatted_params = ', '.join([
+        f"{param.name}={param.default!r}" if param.default is not inspect.Parameter.empty else param.name
+        for param in sig.parameters.values()
+    ])
+    formatted_signature = f"({formatted_params})"
+
+    # Get the docstring of the member and take the first three lines
+    docstring = inspect.getdoc(member)
+    first_lines = "\n".join(docstring.split('\n')[:3]) if docstring else "No docstring available"
+
+    return {"signature": formatted_signature, "docstring": first_lines}
+
+
+def format_as_comment(name, member_info):
+    formatted_comment = f"def {name}{member_info['signature']}:\n"
+    formatted_comment += "    \"\"\"\n"
+    for line in member_info['docstring'].split('\n'):
+        formatted_comment += f"    {line}\n"
+    formatted_comment += "    \"\"\"\n"
+    formatted_comment += "    pass  # This is a stub implementation\n"
+    return formatted_comment
 
 
 def to_module_name(name):
