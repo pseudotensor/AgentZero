@@ -18,7 +18,7 @@ Primordial code for automatic generation of complex agents through automatic age
 
 """
 
-num_doc_lines = 5
+num_doc_lines = 10
 
 
 def get_client():
@@ -372,15 +372,26 @@ def get_custom_classes_and_functions(module):
 
 
 def extract_object_info(obj):
-    info = {}
-    # Check if the object is a class, and iterate over all methods
+    info = []
+    # Check if the object is a class
     if inspect.isclass(obj):
+        class_name = obj.__name__
+        # Start class definition
+        class_info = f"class {class_name}:\n"
+        method_infos = []
         for name, member in inspect.getmembers(obj, predicate=inspect.isfunction):
-            info[name] = format_as_comment(name, get_member_info(member))
+            member_info = get_member_info(member)
+            method_infos.append(format_as_comment(name, member_info, is_class_method=True))
+        if not method_infos:
+            class_info += "    pass  # No methods in class\n"
+        else:
+            class_info += "\n".join(method_infos)
+        info.append(class_info)
     elif inspect.isfunction(obj) or inspect.ismethod(obj):
         # Directly get info if obj is a function or method
-        info[obj.__name__] = format_as_comment(obj.__name__, get_member_info(obj))
-    return info
+        member_info = get_member_info(obj)
+        info.append(format_as_comment(obj.__name__, member_info))
+    return "\n".join(info)
 
 
 def get_member_info(member):
@@ -395,18 +406,21 @@ def get_member_info(member):
 
     # Get the docstring of the member and take the first three lines
     docstring = inspect.getdoc(member)
-    first_lines = "\n".join(docstring.split('\n')[:3]) if docstring else "No docstring available"
+    first_lines = "\n".join(docstring.split('\n')[:num_doc_lines]) if docstring else "No docstring available"
 
     return {"signature": formatted_signature, "docstring": first_lines}
 
 
-def format_as_comment(name, member_info):
-    formatted_comment = f"def {name}{member_info['signature']}:\n"
-    formatted_comment += "    \"\"\"\n"
+def format_as_comment(name, member_info, is_class_method=False):
+    # Set the base indentation level
+    indent = "    " if is_class_method else ""
+
+    formatted_comment = f"{indent}def {name}{member_info['signature']}:\n"
+    formatted_comment += f"{indent}    \"\"\"\n"
     for line in member_info['docstring'].split('\n'):
-        formatted_comment += f"    {line}\n"
-    formatted_comment += "    \"\"\"\n"
-    formatted_comment += "    pass  # This is a stub implementation\n"
+        formatted_comment += f"{indent}    {line}\n"
+    formatted_comment += f"{indent}    \"\"\"\n"
+    formatted_comment += f"{indent}    pass  # Stub implementation\n"
     return formatted_comment
 
 

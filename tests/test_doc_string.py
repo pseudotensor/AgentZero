@@ -1,8 +1,6 @@
 import inspect
 
-import pytest
-
-from agent0 import format_as_comment
+from agent0 import format_as_comment, extract_object_info
 
 
 def mock_function(a, b=10):
@@ -17,19 +15,9 @@ def mock_function(a, b=10):
     return a + b
 
 
-def test_format_as_comment():
-    # Get signature and docstring info for the mock function
-    sig = inspect.signature(mock_function)
-    docstring = inspect.getdoc(mock_function)
-
-    # Create member info dictionary
-    member_info = {
-        'signature': str(sig),
-        'docstring': docstring
-    }
-
-    # Expected output format
-    expected_output = (
+# Pytest function for testing the standalone function stub
+def test_function_stub():
+    expected_function_stub = (
         "def mock_function(a, b=10):\n"
         "    \"\"\"\n"
         "    Adds two numbers.\n"
@@ -39,12 +27,12 @@ def test_format_as_comment():
         "    Returns:\n"
         "        int: The sum of the two numbers.\n"
         "    \"\"\"\n"
-        "    pass  # This is a stub implementation\n"
+        "    pass  # Stub implementation\n"
     )
 
-    # Test the format_as_comment function
-    result = format_as_comment("mock_function", member_info)
-    assert result == expected_output, "The function output does not match the expected format."
+    result = extract_object_info(mock_function)
+    print(result)
+    assert result == expected_function_stub, "The output for the function does not match the expected format."
 
 
 # Mock class for testing
@@ -70,37 +58,29 @@ class MockClass:
         return y + 5
 
 
-# Pytest function for class methods
-@pytest.mark.parametrize("method_name, expected", [
-    ("method1",
-     "def method1(self, x):\n"
-     "    \"\"\"\n"
-     "    Multiplies a number by 2.\n"
-     "    Args:\n"
-     "        x (int): The number to multiply.\n"
-     "    Returns:\n"
-     "        int: The result of the multiplication.\n"
-     "    \"\"\"\n"
-     "    pass  # This is a stub implementation\n"),
-    ("method2",
-     "def method2(self, y=10):\n"
-     "    \"\"\"\n"
-     "    Adds 5 to the number.\n"
-     "    Args:\n"
-     "        y (int, optional): The base number, default is 10.\n"
-     "    Returns:\n"
-     "        int: The result of the addition.\n"
-     "    \"\"\"\n"
-     "    pass  # This is a stub implementation\n")
-])
-def test_format_as_comment_with_class_methods(method_name, expected):
-    method = getattr(MockClass, method_name)
-    sig = inspect.signature(method)
-    docstring = inspect.getdoc(method)
-    member_info = {
-        'signature': str(sig),
-        'docstring': docstring
-    }
+def test_class_stub():
+    expected_class_stub = (
+        "class MockClass:\n"
+        "    def method1(self, x):\n"
+        "        \"\"\"\n"
+        "        Multiplies a number by 2.\n"
+        "        Args:\n"
+        "            x (int): The number to multiply.\n"
+        "        Returns:\n"
+        "            int: The result of the multiplication.\n"
+        "        \"\"\"\n"
+        "        pass  # Stub implementation\n"
+        "\n"
+        "    def method2(self, y=10):\n"
+        "        \"\"\"\n"
+        "        Adds 5 to the number.\n"
+        "        Args:\n"
+        "            y (int, optional): The base number, default is 10.\n"
+        "        Returns:\n"
+        "            int: The result of the addition.\n"
+        "        \"\"\"\n"
+        "        pass  # Stub implementation\n"
+    )
 
-    result = format_as_comment(method_name, member_info)
-    assert result == expected, f"The output for {method_name} does not match the expected format."
+    result = extract_object_info(MockClass)
+    assert result == expected_class_stub, "The output for the class does not match the expected format."
