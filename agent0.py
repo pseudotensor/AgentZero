@@ -25,36 +25,12 @@ history_level = 1
 def get_client():
     from openai import AzureOpenAI
 
-    models = {'gpt-3.5-turbo-0613': dict(azure_deployment='h2ogpt',
-                                         base_url=os.getenv('OPENAI_BASE_URL'),
-                                         api_key=os.getenv('OPENAI_API_KEY')),
-              'gpt-3.5-turbo-16k-0613': dict(azure_deployment='h2ogpt',
-                                             base_url=os.getenv('OPENAI_BASE_URL'),
-                                             api_key=os.getenv('OPENAI_API_KEY')),
-              'gpt-4-0613': dict(azure_deployment='h2ogpt',
-                                 base_url=os.getenv('OPENAI_BASE_URL'),
-                                 api_key=os.getenv('OPENAI_API_KEY')),
-              'gpt-4-32k-0613': dict(azure_deployment='h2ogpt',
-                                     base_url=os.getenv('OPENAI_BASE_URL'),
-                                     api_key=os.getenv('OPENAI_API_KEY')),
-              'gpt-4-1106-preview': dict(azure_deployment='h2ogpt',
-                                         base_url=os.getenv('OPENAI_BASE_URL'),
-                                         api_key=os.getenv('OPENAI_API_KEY')),
-              'gpt-35-turbo-1106': dict(azure_deployment='h2ogpt2',
-                                        base_url=os.getenv('OPENAI_BASE_URL'),
-                                        api_key=os.getenv('OPENAI_API_KEY')),
-              'gpt-4-vision-preview': dict(azure_deployment='h2ogpt3',
-                                           base_url=os.getenv('OPENAI_BASE_URL'),
-                                           api_key=os.getenv('OPENAI_API_KEY')),
-              }
+    model = 'gpt-4o'
 
-    api_version = "2023-12-01-preview"
-    model = 'gpt-4-1106-preview'
-
-    client_args = dict(azure_deployment=models[model]['azure_deployment'],
-                       azure_endpoint=models[model]['base_url'],
-                       api_version=api_version,
-                       api_key=models[model]['api_key'])
+    client_args = dict(azure_deployment=os.getenv('OPENAI_AZURE_DEPLOYMENT'),
+                       azure_endpoint=os.getenv('OPENAI_BASE_URL'),
+                       api_version="2023-12-01-preview",
+                       api_key=os.getenv('OPENAI_API_KEY'))
     client = AzureOpenAI(**client_args)
     return client, model
 
