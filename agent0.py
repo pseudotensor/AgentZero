@@ -10,7 +10,6 @@ import random
 import string
 import pprint
 import re
-import filelock
 import importlib
 
 """
@@ -321,8 +320,8 @@ def get_tool_imports(path='python_tools'):
                 old_module_path = os.path.join(path, module_name) + '.py'
                 new_module_path = os.path.join(path, new_module_name) + '.py'
                 if not os.path.isfile(new_module_path) and os.path.isfile(old_module_path):
-                    with filelock.FileLock(old_module_path + '.lock'):
-                        shutil.move(old_module_path, new_module_path)
+                    # move is atomic
+                    shutil.move(old_module_path, new_module_path)
                 else:
                     new_module_path = old_module_path
                 if inspect.isclass(obj):
